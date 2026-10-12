@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packing List</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 16px; background: #fafafa; color: #222; }
+  h1 { font-size: 1.5rem; margin-bottom: 12px; }
+  h2.section { font-size: 1.1rem; margin: 28px 0 0; padding: 6px 10px; background: #e2e8f0; border-radius: 8px; }
+  h3 { font-size: 0.95rem; margin: 14px 0 4px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; }
+  input, select, button { font: inherit; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+  button { background: #2b6cb0; color: white; border: none; cursor: pointer; }
+  button.secondary { background: #e2e8f0; color: #222; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .row > input { flex: 1; min-width: 0; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button { background: #e2e8f0; color: #222; padding: 8px 12px; }
+  .tabs button.active { background: #2b6cb0; color: white; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 8px 4px; }
+  .item label { flex: 1; }
+  .item.done label { text-decoration: line-through; color: #888; }
+  .item input[type=checkbox] { width: 20px; height: 20px; padding: 0; }
+  .item button, .member button { background: none; color: #c53030; padding: 4px; font-size: 0.8rem; }
+  #progress { font-size: 0.9rem; color: #555; margin: 8px 0; }
+  .footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  details { margin: 20px 0 8px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .member { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  .member input { flex: 1; min-width: 0; }
+  .hint { font-size: 0.8rem; color: #666; margin: 6px 0; }
+</style>
+</head>
+<body>
+  <h1>Packing List</h1>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div id="progress"></div>
+
+  <div class="row">
+    <input id="newItem" placeholder="Add an item">
+    <select id="newOwner"></select>
+  </div>
+  <div class="row">
+    <select id="newScope"></select>
+    <button id="addItem">Add item</button>
+  </div>
+
+  <details id="family">
+    <summary>Family members</summary>
+    <p class="hint">Rename, add or remove people. Items for a removed person move to Shared.</p>
+    <div id="memberList"></div>
+    <div class="row">
+      <input id="newMember" placeholder="Add a person (e.g. a name or 'Baby')">
+      <button id="addMember">Add</button>
+    </div>
+  </details>
+
+  <div id="list"></div>
+
+  <div class="footer">
+    <button class="secondary" id="reset">Reset checks</button>
+    <button class="secondary" id="export">Export backup</button>
+    <button class="secondary" id="defaults">Reload defaults</button>
+  </div>
+
+<script>
+  const KEY = "packingListData_v3";
+  const TRIPS = ["Summer", "Winter", "Transitional"];
+  const COMMON = "Every trip";
+  const SHARED = { id: "shared", name: "Shared" };
+
+  const DEFAULT_MEMBERS = [
+    { id: "me", name: "Me" },
+    { id: "husband", name: "Husband" },
+    { id: "kids", name: "Kids" }
+  ];
+
+  // [item, owner id]
+  const DEFAULT_COMMON = [
+    // Shared
+    ["Visa", "shared"],
+    ["Keys", "shared"],
+    ["eSIM", "shared"],
+    ["Lounge priority pass", "shared"],
+    ["Passports (French and Chinese)", "shared"],
+    ["ID for everyone", "shared"],
+    ["First aid (medication, ointment, thermometer, nose washer)", "shared"],
+    ["Gifts for parents and children", "shared"],
+    ["Melatonin", "shared"],
+    ["Energy powder", "shared"],
+    ["Before leaving: take out trash, shut off heat, open windows", "shared"],
+    // Me
+    ["Green card", "me"],
+    ["Driving license", "me"],
+    ["Alipay", "me"],
+    ["iPhone charger", "me"],
+    ["iPad", "me"],
+    ["Pad", "me"],
+    ["Watch charger", "me"],
+    ["Floss", "me"],
+    ["Toiletries", "me"],
+    ["Makeup", "me"],
+    ["Pills", "me"],
+    ["Jewelry", "me"],
+    ["Hair ties and clips", "me"],
+    ["Earphones", "me"],
+    ["Wallet", "me"],
+    ["Bags", "me"],
+    ["Camera", "me"],
+    ["Film", "me"],
+    ["Journal", "me"],
+    ["Underwear", "me"],
+    ["Pajamas", "me"],
+    ["Sneakers", "me"],
+    ["Climbing shoes", "me"],
+    // Husband
+    ["Driving license", "husband"],
+    ["Toiletries (deodorant, toothbrush, shaver, comb, file)", "husband"],
+    ["Glasses", "husband"],
+    ["Laptop and card for work", "husband"],
+    ["Corporate phone", "husband"],
+    ["Charger, phone, camera", "husband"],
+    ["Bose headphones", "husband"],
+    ["Sandwich and healthy snacks (airplane)", "husband"],
+    ["Water bottle", "husband"],
+    ["Pyjamas", "husband"],
+    ["Liquid chalk", "husband"],
+    ["Climbing shoes", "husband"],
+    // Kids
+    ["Comfort toys (doudou)", "kids"],
+    ["Stroller", "kids"],
+    ["Flying tot", "kids"],
+    ["Spare clothes", "kids"],
+    ["Diapers and wipes", "kids"],
+    ["Diaper cream", "kids"],
+    ["Cream", "kids"],
+    ["Snacks for flight (grapes, crackers)", "kids"],
+    ["Toys for flight (sticker book, spinner, busy book)", "kids"],
+    ["Water bottle", "kids"],
+    ["Cups", "kids"],
+    ["Toothbrush and toothpaste", "kids"],
+    ["Shower gel", "kids"],
+    ["Wash cloths", "kids"],
+    ["Sheet for travel crib", "kids"],
+    ["Sleeping sack", "kids"],
+    ["Pajamas", "kids"],
+    ["Regular outfit", "kids"],
+    ["Dress outfit", "kids"],
+    ["Shoes", "kids"],
+    ["Nail clipper", "kids"],
+    ["Flight pillow", "kids"],
+    ["Headphones", "kids"],
+    ["Hiking backpack", "kids"]
+  ];
+
+  const DEFAULT_TRIPS = {
+    "Summer": [
+      ["Sunscreen", "shared"],
+      ["Sunglasses", "me"], ["Cap", "me"], ["Flip-flops", "me"], ["Dress", "me"], ["T-shirts", "me"],
+      ["Swimwear", "husband"], ["Sunglasses", "husband"], ["Hat", "husband"], ["Birkenstocks", "husband"],
+      ["Sunglasses", "kids"], ["Hats", "kids"], ["Water shoes", "kids"], ["Poncho towel", "kids"]
+    ],
+    "Winter": [
+      ["Long sleeves", "me"],
+      ["Long sleeves", "husband"]
+    ],
+    "Transitional": [
+      ["Light jacket", "me"], ["Long sleeves", "me"],
+      ["Rain jacket", "husband"], ["Long sleeves", "husband"],
+      ["Light jacket", "kids"], ["Raincoat", "kids"]
+    ]
+  };
+
+  let data = { members: [], trips: {}, common: [], current: null };
+
+  function uid() { return Date.now() + Math.random(); }
+
+  function makeItems(pairs) {
+    return pairs.map(p => ({ id: uid(), text: p[0], owner: p[1], done: false }));
+  }
+
+  function loadDefaults() {
+    data.members = DEFAULT_MEMBERS.map(m => ({ ...m }));
+    data.common = makeItems(DEFAULT_COMMON);
+    data.trips = {};
+    for (const name of TRIPS) data.trips[name] = makeItems(DEFAULT_TRIPS[name]);
+    data.current = TRIPS[0];
+  }
+
+  function load() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(KEY));
+      if (raw && raw.members && raw.trips && raw.common) data = raw;
+    } catch (e) {}
+    if (!data.members.length && !Object.keys(data.trips).length) loadDefaults();
+    if (!data.current || !data.trips[data.current]) data.current = Object.keys(data.trips)[0];
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); }
+    catch (e) { alert("Could not save in this browser."); }
+  }
+
+  function owners() { return data.members.concat([SHARED]); }
+
+  function renderTabs() {
+    const tabs = document.getElementById("tabs");
+    tabs.innerHTML = "";
+    for (const name of Object.keys(data.trips)) {
+      const b = document.createElement("button");
+      b.textContent = name;
+      if (name === data.current) b.className = "active";
+      b.onclick = () => { data.current = name; save(); render(); };
+      tabs.appendChild(b);
+    }
+  }
+
+  function renderSection(container, title, getList, setList) {
+    const items = getList();
+    const h = document.createElement("h2");
+    h.className = "section";
+    h.textContent = title;
+    container.appendChild(h);
+
+    for (const owner of owners()) {
+      const group = items.filter(i => i.owner === owner.id);
+      if (group.length === 0) continue;
+      const h3 = document.createElement("h3");
+      h3.textContent = owner.name;
+      container.appendChild(h3);
+      for (const item of group) {
+        const row = document.createElement("div");
+        row.className = "item" + (item.done ? " done" : "");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = item.done;
+        cb.id = "cb" + item.id;
+        cb.onchange = () => { item.done = cb.checked; save(); render(); };
+        const label = document.createElement("label");
+        label.htmlFor = cb.id;
+        label.textContent = item.text;
+        const del = document.createElement("button");
+        del.textContent = "Remove";
+        del.onclick = () => { setList(getList().filter(x => x.id !== item.id)); save(); render(); };
+        row.append(cb, label, del);
+        container.appendChild(row);
+      }
+    }
+  }
+
+  function renderMembers() {
+    const box = document.getElementById("memberList");
+    box.innerHTML = "";
+    for (const m of data.members) {
+      const row = document.createElement("div");
+      row.className = "member";
+      const input = document.createElement("input");
+      input.value = m.name;
+      input.onchange = () => {
+        const v = input.value.trim();
+        if (v) { m.name = v; save(); render(); }
+        else input.value = m.name;
+      };
+      const del = document.createElement("button");
+      del.textContent = "Remove";
+      del.onclick = () => {
+        if (!confirm("Remove " + m.name + "? Their items move to Shared.")) return;
+        const move = list => list.forEach(i => { if (i.owner === m.id) i.owner = "shared"; });
+        move(data.common);
+        Object.values(data.trips).forEach(move);
+        data.members = data.members.filter(x => x.id !== m.id);
+        save(); render();
+      };
+      row.append(input, del);
+      box.appendChild(row);
+    }
+  }
+
+  function renderSelects() {
+    const ownerSel = document.getElementById("newOwner");
+    const prevOwner = ownerSel.value;
+    ownerSel.innerHTML = "";
+    owners().forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = o.id;
+      opt.textContent = o.name;
+      ownerSel.appendChild(opt);
+    });
+    if (owners().some(o => o.id === prevOwner)) ownerSel.value = prevOwner;
+
+    const scope = document.getElementById("newScope");
+    const prev = scope.value;
+    scope.innerHTML = "";
+    [COMMON, data.current].forEach(s => {
+      const o = document.createElement("option");
+      o.textContent = s;
+      scope.appendChild(o);
+    });
+    if (prev === COMMON || prev === data.current) scope.value = prev;
+  }
+
+  function render() {
+    renderTabs();
+    renderSelects();
+    renderMembers();
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+    const tripItems = data.trips[data.current] || [];
+    const all = data.common.concat(tripItems);
+    const done = all.filter(i => i.done).length;
+    document.getElementById("progress").textContent = done + " of " + all.length + " packed";
+
+    renderSection(list, COMMON, () => data.common, v => { data.common = v; });
+    renderSection(list, data.current + " extras", () => data.trips[data.current], v => { data.trips[data.current] = v; });
+  }
+
+  document.getElementById("addItem").onclick = () => {
+    const input = document.getElementById("newItem");
+    const text = input.value.trim();
+    if (!text) return;
+    const item = { id: uid(), text, owner: document.getElementById("newOwner").value, done: false };
+    if (document.getElementById("newScope").value === COMMON) data.common.push(item);
+    else data.trips[data.current].push(item);
+    input.value = "";
+    save(); render();
+  };
+
+  document.getElementById("addMember").onclick = () => {
+    const input = document.getElementById("newMember");
+    const name = input.value.trim();
+    if (!name) return;
+    data.members.push({ id: "m" + uid(), name });
+    input.value = "";
+    save(); render();
+  };
+
+  document.getElementById("reset").onclick = () => {
+    data.common.forEach(i => i.done = false);
+    (data.trips[data.current] || []).forEach(i => i.done = false);
+    save(); render();
+  };
+
+  document.getElementById("defaults").onclick = () => {
+    if (confirm("Replace everything (including family members) with the original defaults? Your edits will be lost.")) {
+      loadDefaults(); save(); render();
+    }
+  };
+
+  document.getElementById("export").onclick = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "packing-list-backup.json";
+    a.click();
+  };
+
+  load(); save(); render();
+</script>
+</body>
+</html>
